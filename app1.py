@@ -107,13 +107,28 @@ if uploaded_file:
     months = st.multiselect("Select Months", data['Month'].unique(), default=data['Month'].unique())
     filtered_data = data[data['Year'].isin(years) & data['Month'].isin(months)]
 
-    # MTTR, MTTI, MTTD Bar Chart (Quarterly)
-    st.write("### MTTR, MTTI, MTTD Distribution (Quarterly)")
-    quarterly_data = filtered_data.groupby('Quarter')[['MTTR', 'MTTD', 'MTTI']].sum().reset_index()
+    # Select Time Granularity (Yearly, Quarterly, Monthly)
+    granularity = st.radio("Select Time Granularity", ["Yearly", "Quarterly", "Monthly"], index=1)
+
+    # Group data based on selected granularity
+    if granularity == "Yearly":
+        grouped_data = filtered_data.groupby('Year')[['MTTR', 'MTTD', 'MTTI']].sum().reset_index()
+        x_col = 'Year'
+    elif granularity == "Quarterly":
+        grouped_data = filtered_data.groupby('Quarter')[['MTTR', 'MTTD', 'MTTI']].sum().reset_index()
+        x_col = 'Quarter'
+    elif granularity == "Monthly":
+        filtered_data['Month-Year'] = filtered_data['Begin'].dt.to_period("M")
+        grouped_data = filtered_data.groupby('Month-Year')[['MTTR', 'MTTD', 'MTTI']].sum().reset_index()
+        x_col = 'Month-Year'
+
+    # MTTR, MTTI, MTTD Bar Chart
+    st.write(f"### MTTR, MTTI, MTTD Distribution ({granularity})")
     fig, ax = plt.subplots(figsize=(10, 6))
-    quarterly_data.plot(kind='bar', x='Quarter', stacked=True, ax=ax, color=['red', 'green', 'blue'])
+    grouped_data.plot(kind='bar', x=x_col, stacked=True, ax=ax, color=['red', 'green', 'blue'])
     ax.set_ylabel('Minutes')
-    ax.set_title('MTTR, MTTI, MTTD Distribution (Quarterly)')
+    ax.set_title(f'MTTR, MTTI, MTTD Distribution ({granularity})')
+    plt.xticks(rotation=45)
     st.pyplot(fig)
 
     # MTTR Over Time (Line Chart)
@@ -128,7 +143,7 @@ if uploaded_file:
 
     # Detailed Data
     st.write("### Detailed Data")
-    detailed_data = quarterly_data.copy()
+    detailed_data = grouped_data.copy()
     detailed_data['MTTR'] = detailed_data['MTTR'].apply(lambda x: format_duration(int(x)))
     detailed_data['MTTD'] = detailed_data['MTTD'].apply(lambda x: format_duration(int(x)))
     detailed_data['MTTI'] = detailed_data['MTTI'].apply(lambda x: format_duration(int(x)))
