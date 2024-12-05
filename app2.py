@@ -65,6 +65,7 @@ if uploaded_file:
 
     # Apply filters
     filtered_data = data[(data['Year'].isin(years)) & (data['Month'].isin(months))]
+    filtered_data['Root Cause Responsibility'] = filtered_data['Root Cause Responsibility'].str.split('-').str[0].str.strip()
     if internal_external_filter != "Overall":
         filtered_data = filtered_data[filtered_data['Internal/External'] == internal_external_filter]
 
@@ -104,10 +105,13 @@ if uploaded_file:
     st.dataframe(drill_down_data)
 
     # Question 2: Root Cause Responsibility
+    threshold=2
     st.write("### 2. Root Cause Responsibility")
     root_cause_responsibility = filtered_data['Root Cause Responsibility'].value_counts()
+    major_categories= root_cause_responsibility[root_cause_responsibility > threshold]
+    others_count=root_cause_responsibility[root_cause_responsibility <=threshold].sum()
     fig, ax = plt.subplots()
-    root_cause_responsibility.plot(kind='bar', ax=ax, color='orange')
+    major_categories.plot(kind='bar', ax=ax, color='orange')
     ax.set_title('Root Cause Responsibility')
     ax.set_xlabel('Responsible Group')
     ax.set_ylabel('Count')
