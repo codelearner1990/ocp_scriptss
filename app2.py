@@ -64,15 +64,17 @@ if uploaded_file:
 
     filtered_data = data[(data['Year'].isin(years)) & (data['Month'].isin(months))]
 
+    granularity = st.radio("Select Time Granularity", ["Yearly", "Quarterly", "Monthly"], index=1)
+
     if granularity == "Yearly":
-        grouped_data = filtered_data.groupby('Year').sum().reset_index()
+        grouped_data = filtered_data.groupby('Year')[['MTTR', 'MTTD', 'MTTI']].sum().reset_index()
         x_col = 'Year'
     elif granularity == "Quarterly":
-        grouped_data = filtered_data.groupby('Quarter').sum().reset_index()
+        grouped_data = filtered_data.groupby('Quarter')[['MTTR', 'MTTD', 'MTTI']].sum().reset_index()
         x_col = 'Quarter'
     elif granularity == "Monthly":
         filtered_data['Month-Year'] = filtered_data['Begin'].dt.to_period("M")
-        grouped_data = filtered_data.groupby('Month-Year').sum().reset_index()
+        grouped_data = filtered_data.groupby('Month-Year')[['MTTR', 'MTTD', 'MTTI']].sum().reset_index()
         x_col = 'Month-Year'
 
     st.write("### Raw Data Overview")
@@ -138,7 +140,17 @@ if uploaded_file:
     # Display Detailed Data
     st.write("### Detailed Data")
     detailed_data = grouped_data.copy()
-    detailed_data['MTTR'] = detailed_data['MTTR'].apply(format_duration)
-    detailed_data['MTTI'] = detailed_data['MTTI'].apply(format_duration)
-    detailed_data['MTTD'] = detailed_data['MTTD'].apply(format_duration)
+    detailed_data['MTTD'] = detailed_data['MTTD'].apply(lambda x: format_duration(int(x)))
+    detailed_data['MTTI'] = detailed_data['MTTI'].apply(lambda x: format_duration(int(x)))
+    detailed_data['MTTR'] = detailed_data['MTTR'].apply(lambda x: format_duration(int(x)))
+
+# Select only the required columns
+    if granularity == "Monthly":
+        detailed_data = detailed_data[['Month-Year', 'MTTD', 'MTTI', 'MTTR']]
+    elif granularity == "Quarterly":
+        detailed_data = detailed_data[['Quarter', 'MTTD', 'MTTI', 'MTTR']]
+    else:  # Yearly
+        detailed_data = detailed_data[['Year', 'MTTD', 'MTTI', 'MTTR']]
+
+# Display the cleaned-up detailed data
     st.dataframe(detailed_data)
