@@ -87,12 +87,66 @@ if uploaded_file:
     st.pyplot(fig)
 
     # Question 4: Graph for MTTD, MTTI, MTTR and Correlation
-    st.write("### 4. Correlation of MTTD, MTTI, MTTR")
-    correlation_data = data[['MTTD', 'MTTI', 'MTTR']].dropna()
-    fig, ax = plt.subplots(figsize=(8, 6))
-    sns.heatmap(correlation_data.corr(), annot=True, cmap='coolwarm', fmt='.2f', ax=ax)
-    ax.set_title('Correlation of MTTD, MTTI, MTTR')
+# Allow users to filter by time period
+    st.sidebar.title("Filter Options")
+    period = st.sidebar.selectbox("Select Time Period", ["Quarterly", "Monthly", "Yearly", "Last Week"])
+
+    # Group data based on selected period
+    if period == "Quarterly":
+        data['Quarter'] = data['Begin'].dt.to_period('Q').astype(str)
+        grouped_data = data.groupby('Quarter')[['MTTR (mins)', 'MTTI (mins)', 'MTTD (mins)']].mean().reset_index()
+        x_column = 'Quarter'
+    elif period == "Monthly":
+        data['Month-Year'] = data['Begin'].dt.to_period('M').astype(str)
+        grouped_data = data.groupby('Month-Year')[['MTTR (mins)', 'MTTI (mins)', 'MTTD (mins)']].mean().reset_index()
+        x_column = 'Month-Year'
+    elif period == "Yearly":
+        data['Year'] = data['Begin'].dt.year
+        grouped_data = data.groupby('Year')[['MTTR (mins)', 'MTTI (mins)', 'MTTD (mins)']].mean().reset_index()
+        x_column = 'Year'
+    elif period == "Last Week":
+        data['Week'] = data['Begin'].dt.to_period('W').astype(str)
+        grouped_data = data.groupby('Week')[['MTTR (mins)', 'MTTI (mins)', 'MTTD (mins)']].mean().reset_index()
+        grouped_data = grouped_data.tail(1)  # Only show the last week
+        x_column = 'Week'
+
+    # Stacked bar chart for MTTR, MTTI, and MTTD
+    st.write(f"### MTTR, MTTI, and MTTD ({period})")
+    fig, ax = plt.subplots(figsize=(10, 6))
+    grouped_data.plot(
+        x=x_column,
+        kind='bar',
+        stacked=True,
+        color=['#FF9999', '#66B2FF', '#99FF99'],
+        ax=ax
+    )
+    ax.set_title(f"MTTR, MTTI, MTTD Distribution ({period})")
+    ax.set_xlabel(period)
+    ax.set_ylabel("Time (mins)")
+    plt.xticks(rotation=45)
     st.pyplot(fig)
+
+    # Time Spent Breakdown (Pie Chart)
+    st.write("### Total Time Breakdown (MTTR, MTTI, MTTD)")
+    total_time = {
+        "MTTR": data['MTTR (mins)'].sum(),
+        "MTTI": data['MTTI (mins)'].sum(),
+        "MTTD": data['MTTD (mins)'].sum(),
+    }
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.pie(
+        total_time.values(),
+        labels=total_time.keys(),
+        autopct="%1.1f%%",
+        colors=['#FF9999', '#66B2FF', '#99FF99'],
+        startangle=140
+    )
+    ax.set_title("Proportion of MTTR, MTTI, MTTD")
+    st.pyplot(fig)
+
+    # Display the grouped data table
+    st.write("### Detailed Data")
+    st.dataframe(grouped_data)
 
     # Question 5: Common Patterns in Root Cause
     st.write("### 5. Common Patterns in Root Cause")
