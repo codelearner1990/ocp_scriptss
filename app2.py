@@ -9,18 +9,41 @@ from collections import Counter
 # Cache data loading
 @st.cache_data
 def load_data(uploaded_file):
+    # Load data
     if uploaded_file.name.endswith('.xlsx'):
         data = pd.read_excel(uploaded_file)
     else:
         data = pd.read_csv(uploaded_file)
-    data['Begin'] = pd.to_datetime(data['Begin'], errors='coerce')
-    data['End'] = pd.to_datetime(data['End'], errors='coerce')
-    data['Duration (mins)'] = (data['End'] - data['Begin']).dt.total_seconds() / 60
-    data.fillna("Unknown", inplace=True)
-    data['Year'] = data['Begin'].dt.year
-    data['Month'] = data['Begin'].dt.month
-    data['Quarter'] = data['Begin'].dt.to_period("Q")
+
+    # Ensure 'Begin' and 'End' columns are properly converted to datetime
+    for col in ['Begin', 'End']:
+        if col in data.columns:
+            data[col] = pd.to_datetime(data[col], errors='coerce')  # Invalid dates will be set as NaT (Not a Time)
+
+    # Add 'Duration (mins)' column
+    if 'Begin' in data.columns and 'End' in data.columns:
+        data['Duration (mins)'] = (data['End'] - data['Begin']).dt.total_seconds() / 60
+
+    # Fill missing values based on column data type
+    for column in data.columns:
+        if data[column].dtype in ['float64', 'int64']:
+            data[column] = data[column].fillna(0).astype(float)  # Ensure numeric columns are float
+        elif data[column].dtype == 'object' or pd.api.types.is_string_dtype(data[column]):
+            data[column] = data[column].fillna("Unknown").astype(str)  # Ensure string columns remain string
+
+    # Add 'Year', 'Month', and 'Quarter' columns if 'Begin' is valid
+    if 'Begin' in data.columns and pd.api.types.is_datetime64_any_dtype(data['Begin']):
+        data['Year'] = data['Begin'].dt.year
+        data['Month'] = data['Begin'].dt.month
+        data['Quarter'] = data['Begin'].dt.to_period("Q")
+    else:
+        # Fallback in case 'Begin' is missing or invalid
+        data['Year'] = "Unknown"
+        data['Month'] = "Unknown"
+        data['Quarter'] = "Unknown"
+
     return data
+
 
 # Cache pattern finding
 @st.cache_data
