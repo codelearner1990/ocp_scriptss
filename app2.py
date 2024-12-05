@@ -60,12 +60,15 @@ if uploaded_file:
     st.sidebar.title("Global Filters")
     years = st.sidebar.multiselect("Select Years", data['Year'].unique(), default=data['Year'].unique())
     months = st.sidebar.multiselect("Select Months", data['Month'].unique(), default=data['Month'].unique())
+    internal_external_filter = st.sidebar.radio("Select Scope", ["Overall", "Internal", "External"], index=0)
     granularity = st.sidebar.radio("Select Time Granularity", ["Yearly", "Quarterly", "Monthly"], index=1)
 
+    # Apply filters
     filtered_data = data[(data['Year'].isin(years)) & (data['Month'].isin(months))]
+    if internal_external_filter != "Overall":
+        filtered_data = filtered_data[filtered_data['Internal/External'] == internal_external_filter]
 
-    granularity = st.radio("Select Time Granularity", ["Yearly", "Quarterly", "Monthly"], index=1)
-
+    # Group data based on granularity
     if granularity == "Yearly":
         grouped_data = filtered_data.groupby('Year')[['MTTR', 'MTTD', 'MTTI']].sum().reset_index()
         x_col = 'Year'
@@ -77,6 +80,7 @@ if uploaded_file:
         grouped_data = filtered_data.groupby('Month-Year')[['MTTR', 'MTTD', 'MTTI']].sum().reset_index()
         x_col = 'Month-Year'
 
+    # Raw Data Overview
     st.write("### Raw Data Overview")
     st.dataframe(filtered_data.head())
 
@@ -144,7 +148,7 @@ if uploaded_file:
     detailed_data['MTTI'] = detailed_data['MTTI'].apply(lambda x: format_duration(int(x)))
     detailed_data['MTTR'] = detailed_data['MTTR'].apply(lambda x: format_duration(int(x)))
 
-# Select only the required columns
+    # Select only the required columns
     if granularity == "Monthly":
         detailed_data = detailed_data[['Month-Year', 'MTTD', 'MTTI', 'MTTR']]
     elif granularity == "Quarterly":
@@ -152,5 +156,5 @@ if uploaded_file:
     else:  # Yearly
         detailed_data = detailed_data[['Year', 'MTTD', 'MTTI', 'MTTR']]
 
-# Display the cleaned-up detailed data
+    # Display the cleaned-up detailed data
     st.dataframe(detailed_data)
