@@ -22,7 +22,7 @@ def load_data(uploaded_file):
     data['Quarter'] = data['Begin'].dt.to_period("Q")
     return data
 
-# Cache pattern finding
+# Cache utility to find patterns
 @st.cache_data
 def find_common_patterns(data, column_name, top_n=5):
     text_data = data[column_name].dropna()
@@ -65,9 +65,11 @@ if uploaded_file:
 
     # Apply filters
     filtered_data = data[(data['Year'].isin(years)) & (data['Month'].isin(months))]
-    filtered_data['Root Cause Responsibility'] = filtered_data['Root Cause Responsibility'].str.split('-').str[0].str.strip()
     if internal_external_filter != "Overall":
         filtered_data = filtered_data[filtered_data['Internal/External'] == internal_external_filter]
+
+    # Adjust Root Cause Responsibility Column
+    filtered_data['Root Cause Responsibility'] = filtered_data['Root Cause Responsibility'].str.split('-').str[0].str.strip()
 
     # Group data based on granularity
     if granularity == "Yearly":
@@ -105,11 +107,11 @@ if uploaded_file:
     st.dataframe(drill_down_data)
 
     # Question 2: Root Cause Responsibility
-    threshold=2
+    threshold = 2
     st.write("### 2. Root Cause Responsibility")
     root_cause_responsibility = filtered_data['Root Cause Responsibility'].value_counts()
-    major_categories= root_cause_responsibility[root_cause_responsibility > threshold]
-    others_count=root_cause_responsibility[root_cause_responsibility <=threshold].sum()
+    major_categories = root_cause_responsibility[root_cause_responsibility > threshold]
+    others_count = root_cause_responsibility[root_cause_responsibility <= threshold].sum()
     fig, ax = plt.subplots()
     major_categories.plot(kind='bar', ax=ax, color='orange')
     ax.set_title('Root Cause Responsibility')
