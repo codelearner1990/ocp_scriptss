@@ -22,7 +22,7 @@ def load_data(uploaded_file):
     data['Quarter'] = data['Begin'].dt.to_period("Q")
     return data
 
-# Cache utility to find patterns
+# Cache pattern finding
 @st.cache_data
 def find_common_patterns(data, column_name, top_n=5):
     text_data = data[column_name].dropna()
@@ -65,102 +65,104 @@ if uploaded_file:
 
     # Apply filters
     filtered_data = data[(data['Year'].isin(years)) & (data['Month'].isin(months))]
+    filtered_data['Root Cause Responsibility'] = filtered_data['Root Cause Responsibility'].str.split('-').str[0].str.strip()
     if internal_external_filter != "Overall":
         filtered_data = filtered_data[filtered_data['Internal/External'] == internal_external_filter]
 
-    # Adjust Root Cause Responsibility Column
-    filtered_data['Root Cause Responsibility'] = filtered_data['Root Cause Responsibility'].str.split('-').str[0].str.strip()
+    if filtered_data.empty:
+        st.error("No data available for the selected filters. Please adjust your filters.")
+    else:
+        # Group data based on granularity
+        if granularity == "Yearly":
+            grouped_data = filtered_data.groupby('Year')[['MTTR', 'MTTD', 'MTTI']].sum().reset_index()
+            x_col = 'Year'
+        elif granularity == "Quarterly":
+            grouped_data = filtered_data.groupby('Quarter')[['MTTR', 'MTTD', 'MTTI']].sum().reset_index()
+            x_col = 'Quarter'
+        elif granularity == "Monthly":
+            filtered_data['Month-Year'] = filtered_data['Begin'].dt.to_period("M")
+            grouped_data = filtered_data.groupby('Month-Year')[['MTTR', 'MTTD', 'MTTI']].sum().reset_index()
+            x_col = 'Month-Year'
 
-    # Group data based on granularity
-    if granularity == "Yearly":
-        grouped_data = filtered_data.groupby('Year')[['MTTR', 'MTTD', 'MTTI']].sum().reset_index()
-        x_col = 'Year'
-    elif granularity == "Quarterly":
-        grouped_data = filtered_data.groupby('Quarter')[['MTTR', 'MTTD', 'MTTI']].sum().reset_index()
-        x_col = 'Quarter'
-    elif granularity == "Monthly":
-        filtered_data['Month-Year'] = filtered_data['Begin'].dt.to_period("M")
-        grouped_data = filtered_data.groupby('Month-Year')[['MTTR', 'MTTD', 'MTTI']].sum().reset_index()
-        x_col = 'Month-Year'
+        # Raw Data Overview
+        st.write("### Raw Data Overview")
+        st.dataframe(filtered_data.head())
 
-    # Raw Data Overview
-    st.write("### Raw Data Overview")
-    st.dataframe(filtered_data.head())
+        # Question 1: How many issues caused by change?
+        st.write("### 1. Issues Caused by Change")
+        change_issues = filtered_data['Problem Caused By Change'].value_counts()
+        if not change_issues.empty:
+            fig, ax = plt.subplots()
+            change_issues.plot(kind='bar', ax=ax, color='skyblue')
+            for i, value in enumerate(change_issues):
+                ax.text(i, value + 2, str(value), ha='center', fontsize=10)
+            ax.set_title('Issues Caused by Change')
+            ax.set_xlabel('Change Impact')
+            ax.set_ylabel('Count')
+            st.pyplot(fig)
+        else:
+            st.warning("No data for 'Issues Caused by Change'.")
 
-    # Question 1: How many issues caused by change?
-    st.write("### 1. Issues Caused by Change")
-    change_issues = filtered_data['Problem Caused By Change'].value_counts()
-    fig, ax = plt.subplots()
-    change_issues.plot(kind='bar', ax=ax, color='skyblue')
-    for i, value in enumerate(change_issues):
-        ax.text(i, value + 2, str(value), ha='center', fontsize=10)
-    ax.set_title('Issues Caused by Change')
-    ax.set_xlabel('Change Impact')
-    ax.set_ylabel('Count')
-    st.pyplot(fig)
+        # Question 2: Root Cause Responsibility
+        st.write("### 2. Root Cause Responsibility")
+        root_cause_responsibility = filtered_data['Root Cause Responsibility'].value_counts()
+        threshold = 2
+        if not root_cause_responsibility.empty:
+            major_categories = root_cause_responsibility[root_cause_responsibility > threshold]
+            fig, ax = plt.subplots()
+            major_categories.plot(kind='bar', ax=ax, color='orange')
+            ax.set_title('Root Cause Responsibility')
+            ax.set_xlabel('Responsible Group')
+            ax.set_ylabel('Count')
+            plt.xticks(rotation=45)
+            st.pyplot(fig)
+        else:
+            st.warning("No data for 'Root Cause Responsibility'.")
 
-    # Drill-down for Question 1
-    st.write("#### Drill Down to See Data")
-    selected_category = st.selectbox("Select a Change Impact", options=change_issues.index)
-    drill_down_data = filtered_data[filtered_data['Problem Caused By Change'] == selected_category]
-    st.write(f"Filtered Data for '{selected_category}':")
-    st.dataframe(drill_down_data)
+        # Question 3: Avoidable Issues
+        st.write("### 3. Avoidable Issues")
+        avoidable_issues = filtered_data['Avoidability'].value_counts()
+        if not avoidable_issues.empty:
+            fig, ax = plt.subplots()
+            sns.barplot(x=avoidable_issues.index, y=avoidable_issues.values, ax=ax, palette='Blues_d')
+            ax.set_title('Avoidable Issues')
+            ax.set_xlabel('Avoidability')
+            ax.set_ylabel('Count')
+            st.pyplot(fig)
+        else:
+            st.warning("No data for 'Avoidable Issues'.")
 
-    # Question 2: Root Cause Responsibility
-    threshold = 2
-    st.write("### 2. Root Cause Responsibility")
-    root_cause_responsibility = filtered_data['Root Cause Responsibility'].value_counts()
-    major_categories = root_cause_responsibility[root_cause_responsibility > threshold]
-    others_count = root_cause_responsibility[root_cause_responsibility <= threshold].sum()
-    fig, ax = plt.subplots()
-    major_categories.plot(kind='bar', ax=ax, color='orange')
-    ax.set_title('Root Cause Responsibility')
-    ax.set_xlabel('Responsible Group')
-    ax.set_ylabel('Count')
-    plt.xticks(rotation=45)
-    st.pyplot(fig)
+        # Question 4: MTTR, MTTI, MTTD Distribution
+        st.write(f"### MTTR, MTTI, MTTD Distribution ({granularity})")
+        grouped_data['MTTR'] /= 60
+        grouped_data['MTTI'] /= 60
+        grouped_data['MTTD'] /= 60
+        fig, ax = plt.subplots(figsize=(10, 6))
+        grouped_data.plot(kind='bar', x=x_col, stacked=True, ax=ax, color=['red', 'green', 'blue'])
+        ax.set_ylabel('Minutes')
+        ax.set_title(f'MTTR, MTTI, MTTD Distribution ({granularity})')
+        plt.xticks(rotation=45)
+        st.pyplot(fig)
 
-    # Question 3: Avoidable Issues
-    st.write("### 3. Avoidable Issues")
-    avoidable_issues = filtered_data['Avoidability'].value_counts()
-    fig, ax = plt.subplots()
-    sns.barplot(x=avoidable_issues.index, y=avoidable_issues.values, ax=ax, palette='Blues_d')
-    ax.set_title('Avoidable Issues')
-    ax.set_xlabel('Avoidability')
-    ax.set_ylabel('Count')
-    st.pyplot(fig)
+        # Question 5: Common Patterns in Root Cause
+        st.write("### 5. Common Patterns in Root Cause")
+        root_cause_patterns = find_common_patterns(filtered_data, 'Root Cause', top_n=5)
+        st.write("Common Patterns in Root Cause:", root_cause_patterns)
 
-    # Question 4: MTTR, MTTI, MTTD Distribution
-    st.write(f"### MTTR, MTTI, MTTD Distribution ({granularity})")
-    grouped_data['MTTR'] /= 60
-    grouped_data['MTTI'] /= 60
-    grouped_data['MTTD'] /= 60
-    fig, ax = plt.subplots(figsize=(10, 6))
-    grouped_data.plot(kind='bar', x=x_col, stacked=True, ax=ax, color=['red', 'green', 'blue'])
-    ax.set_ylabel('Minutes')
-    ax.set_title(f'MTTR, MTTI, MTTD Distribution ({granularity})')
-    plt.xticks(rotation=45)
-    st.pyplot(fig)
+        # Display Detailed Data
+        st.write("### Detailed Data")
+        detailed_data = grouped_data.copy()
+        detailed_data['MTTD'] = detailed_data['MTTD'].apply(lambda x: format_duration(int(x)))
+        detailed_data['MTTI'] = detailed_data['MTTI'].apply(lambda x: format_duration(int(x)))
+        detailed_data['MTTR'] = detailed_data['MTTR'].apply(lambda x: format_duration(int(x)))
 
-    # Question 5: Common Patterns in Root Cause
-    st.write("### 5. Common Patterns in Root Cause")
-    root_cause_patterns = find_common_patterns(filtered_data, 'Root Cause', top_n=5)
-    st.write("Common Patterns in Root Cause:", root_cause_patterns)
+        # Select only the required columns
+        if granularity == "Monthly":
+            detailed_data = detailed_data[['Month-Year', 'MTTD', 'MTTI', 'MTTR']]
+        elif granularity == "Quarterly":
+            detailed_data = detailed_data[['Quarter', 'MTTD', 'MTTI', 'MTTR']]
+        else:  # Yearly
+            detailed_data = detailed_data[['Year', 'MTTD', 'MTTI', 'MTTR']]
 
-    # Display Detailed Data
-    st.write("### Detailed Data")
-    detailed_data = grouped_data.copy()
-    detailed_data['MTTD'] = detailed_data['MTTD'].apply(lambda x: format_duration(int(x)))
-    detailed_data['MTTI'] = detailed_data['MTTI'].apply(lambda x: format_duration(int(x)))
-    detailed_data['MTTR'] = detailed_data['MTTR'].apply(lambda x: format_duration(int(x)))
-
-    # Select only the required columns
-    if granularity == "Monthly":
-        detailed_data = detailed_data[['Month-Year', 'MTTD', 'MTTI', 'MTTR']]
-    elif granularity == "Quarterly":
-        detailed_data = detailed_data[['Quarter', 'MTTD', 'MTTI', 'MTTR']]
-    else:  # Yearly
-        detailed_data = detailed_data[['Year', 'MTTD', 'MTTI', 'MTTR']]
-
-    # Display the cleaned-up detailed data
-    st.dataframe(detailed_data)
+        # Display the cleaned-up detailed data
+        st.dataframe(detailed_data)
