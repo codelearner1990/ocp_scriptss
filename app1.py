@@ -46,6 +46,12 @@ if uploaded_file:
     st.write("### Raw Data Overview")
     st.dataframe(data.head(10))
 
+    data['Begin'] = pd.to_datetime(data['Begin'], errors='coerce')
+    data['End'] = pd.to_datetime(data['End'], errors='coerce')
+    data['Year'] = data['Begin'].dt.year
+    data['Month'] = data['Begin'].dt.month
+    data['Quarter'] = data['Begin'].dt.to_period("Q")
+
     # Question 1: How many issues caused by change?
     st.write("### 1. Issues Caused by Change")
     change_issues = data['Problem Caused By Change'].value_counts()
@@ -88,65 +94,46 @@ if uploaded_file:
 
     # Question 4: Graph for MTTD, MTTI, MTTR and Correlation
 # Allow users to filter by time period
-    st.sidebar.title("Filter Options")
-    period = st.sidebar.selectbox("Select Time Period", ["Quarterly", "Monthly", "Yearly", "Last Week"])
 
-    # Group data based on selected period
-    if period == "Quarterly":
-        data['Quarter'] = data['Begin'].dt.to_period('Q').astype(str)
-        grouped_data = data.groupby('Quarter')[['MTTR (mins)', 'MTTI (mins)', 'MTTD (mins)']].mean().reset_index()
-        x_column = 'Quarter'
-    elif period == "Monthly":
-        data['Month-Year'] = data['Begin'].dt.to_period('M').astype(str)
-        grouped_data = data.groupby('Month-Year')[['MTTR (mins)', 'MTTI (mins)', 'MTTD (mins)']].mean().reset_index()
-        x_column = 'Month-Year'
-    elif period == "Yearly":
-        data['Year'] = data['Begin'].dt.year
-        grouped_data = data.groupby('Year')[['MTTR (mins)', 'MTTI (mins)', 'MTTD (mins)']].mean().reset_index()
-        x_column = 'Year'
-    elif period == "Last Week":
-        data['Week'] = data['Begin'].dt.to_period('W').astype(str)
-        grouped_data = data.groupby('Week')[['MTTR (mins)', 'MTTI (mins)', 'MTTD (mins)']].mean().reset_index()
-        grouped_data = grouped_data.tail(1)  # Only show the last week
-        x_column = 'Week'
 
-    # Stacked bar chart for MTTR, MTTI, and MTTD
-    st.write(f"### MTTR, MTTI, and MTTD ({period})")
+    # Convert seconds to minutes for visualization purposes
+    data['MTTR'] = data['MTTR'] / 60  # Convert MTTR to minutes
+    data['MTTD'] = data['MTTD'] / 60  # Convert MTTD to minutes
+    data['MTTI'] = data['MTTI'] / 60  # Convert MTTI to minutes
+
+    st.write("### Filter Data")
+    # Year and Month Filters
+    years = st.multiselect("Select Years", data['Year'].unique(), default=data['Year'].unique())
+    months = st.multiselect("Select Months", data['Month'].unique(), default=data['Month'].unique())
+    filtered_data = data[data['Year'].isin(years) & data['Month'].isin(months)]
+
+    # MTTR, MTTI, MTTD Bar Chart (Quarterly)
+    st.write("### MTTR, MTTI, MTTD Distribution (Quarterly)")
+    quarterly_data = filtered_data.groupby('Quarter')[['MTTR', 'MTTD', 'MTTI']].sum().reset_index()
     fig, ax = plt.subplots(figsize=(10, 6))
-    grouped_data.plot(
-        x=x_column,
-        kind='bar',
-        stacked=True,
-        color=['#FF9999', '#66B2FF', '#99FF99'],
-        ax=ax
-    )
-    ax.set_title(f"MTTR, MTTI, MTTD Distribution ({period})")
-    ax.set_xlabel(period)
-    ax.set_ylabel("Time (mins)")
-    plt.xticks(rotation=45)
+    quarterly_data.plot(kind='bar', x='Quarter', stacked=True, ax=ax, color=['red', 'green', 'blue'])
+    ax.set_ylabel('Minutes')
+    ax.set_title('MTTR, MTTI, MTTD Distribution (Quarterly)')
     st.pyplot(fig)
 
-    # Time Spent Breakdown (Pie Chart)
-    st.write("### Total Time Breakdown (MTTR, MTTI, MTTD)")
-    total_time = {
-        "MTTR": data['MTTR (mins)'].sum(),
-        "MTTI": data['MTTI (mins)'].sum(),
-        "MTTD": data['MTTD (mins)'].sum(),
-    }
-    fig, ax = plt.subplots(figsize=(6, 6))
-    ax.pie(
-        total_time.values(),
-        labels=total_time.keys(),
-        autopct="%1.1f%%",
-        colors=['#FF9999', '#66B2FF', '#99FF99'],
-        startangle=140
-    )
-    ax.set_title("Proportion of MTTR, MTTI, MTTD")
+    # MTTR Over Time (Line Chart)
+    st.write("### MTTR Over Time")
+    monthly_data = filtered_data.groupby(['Year', 'Month'])['MTTR'].sum().reset_index()
+    monthly_data['Month-Year'] = monthly_data['Year'].astype(str) + "-" + monthly_data['Month'].astype(str)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.lineplot(data=monthly_data, x='Month-Year', y='MTTR', marker='o', ax=ax)
+    ax.set_xticklabels(monthly_data['Month-Year'], rotation=45)
+    ax.set_title('MTTR Over Time')
     st.pyplot(fig)
 
-    # Display the grouped data table
+    # Detailed Data
     st.write("### Detailed Data")
-    st.dataframe(grouped_data)
+    detailed_data = quarterly_data.copy()
+    detailed_data['MTTR'] = detailed_data['MTTR'].apply(lambda x: format_duration(int(x)))
+    detailed_data['MTTD'] = detailed_data['MTTD'].apply(lambda x: format_duration(int(x)))
+    detailed_data['MTTI'] = detailed_data['MTTI'].apply(lambda x: format_duration(int(x)))
+    st.dataframe(detailed_data)
+
 
     # Question 5: Common Patterns in Root Cause
     st.write("### 5. Common Patterns in Root Cause")
