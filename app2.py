@@ -167,6 +167,45 @@ if uploaded_file:
         plt.xticks(rotation=45)
         st.pyplot(fig)
 
+        # MTTR Over Time (Updated Line Chart)
+ # MTTR Over Time (Updated Line Chart)
+st.write(f"### MTTR, MTTI, MTTD Over Time ({granularity})")
+
+# Convert MTTR, MTTD, and MTTI into days, hours, and minutes dynamically
+def convert_time_column(data, column):
+    data[f'{column}_formatted'] = data[column].apply(lambda x: f"{x // (24 * 60)}d {(x % (24 * 60)) // 60}h {x % 60}m" if x >= 1440 else
+                                                     f"{x // 60}h {x % 60}m" if x >= 60 else f"{x}m")
+    return data
+
+monthly_data = filtered_data.groupby(['Year', 'Month'])[['MTTR', 'MTTI', 'MTTD']].sum().reset_index()
+monthly_data['Month-Year'] = monthly_data['Year'].astype(str) + "-" + monthly_data['Month'].astype(str)
+
+# Apply dynamic formatting
+monthly_data = convert_time_column(monthly_data, 'MTTR')
+monthly_data = convert_time_column(monthly_data, 'MTTI')
+monthly_data = convert_time_column(monthly_data, 'MTTD')
+
+# Line plot
+fig, ax = plt.subplots(figsize=(10, 6))
+sns.lineplot(data=monthly_data, x='Month-Year', y='MTTR', marker='o', label='MTTR', ax=ax, color='red')
+sns.lineplot(data=monthly_data, x='Month-Year', y='MTTI', marker='o', label='MTTI', ax=ax, color='green')
+sns.lineplot(data=monthly_data, x='Month-Year', y='MTTD', marker='o', label='MTTD', ax=ax, color='blue')
+
+# Formatting the x-axis
+ax.set_xticklabels(monthly_data['Month-Year'], rotation=45)
+ax.set_title(f"MTTR, MTTI, MTTD Over Time ({granularity})")
+ax.set_ylabel("Minutes")
+ax.legend(loc="upper left")
+
+# Display plot
+st.pyplot(fig)
+
+# Display Detailed Data (Optional)
+st.write("### Detailed MTTR, MTTI, MTTD Over Time")
+st.dataframe(monthly_data[['Month-Year', 'MTTR_formatted', 'MTTI_formatted', 'MTTD_formatted']])
+
+
+
         # Question 5: Common Patterns in Root Cause
         st.write("### 5. Common Patterns in Root Cause")
         root_cause_patterns = find_common_patterns(filtered_data, 'Root Cause', top_n=5)
