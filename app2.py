@@ -93,18 +93,18 @@ def preprocess_traffic_impact(data, column_name='Traffic Impact'):
                 category, items = entry.split('=', 1)
                 category = category.strip()
                 for item in items.split(','):
-                    try:
+                    #try:
                         key, value = item.split(':', 1)
                         key = key.strip()
                         value = int(value.strip())
                         impacts[f"{category}_{key}"] = impacts.get(f"{category}_{key}", 0) + value
-                    except ValueError:
-                        st.warning(f"Skipping malformed entry: {item}")
+                    #except ValueError:
+                        #st.warning(f"Skipping malformed entry: {item}")
             elif traffic_str.strip():
-                try:
+                #try:
                     generic_value = int(traffic_str.strip())
                     impacts[traffic_str.strip()] = impacts.get(traffic_str.strip(), 0) + generic_value
-                except ValueError:
+                #except ValueError:
                     st.warning(f"Skipping malformed generic entry: {traffic_str.strip()}")
         return impacts
 
@@ -121,6 +121,31 @@ def preprocess_traffic_impact(data, column_name='Traffic Impact'):
 
     return traffic_df
 
+# Function to preprocess and group traffic impact data
+def preprocess_traffic_impact_with_granularity(data, column_name='Traffic Impact', granularity='Yearly'):
+    # Preprocess Traffic Impact
+    traffic_df = preprocess_traffic_impact(data, column_name)
+
+    # Add granularity-specific columns
+    if granularity == 'Yearly':
+        data['Granularity'] = data['Year']
+    elif granularity == 'Quarterly':
+        data['Granularity'] = data['Quarter']
+    elif granularity == 'Monthly':
+        data['Granularity'] = data['Begin'].dt.to_period("M").astype(str)
+    else:
+        st.error("Unsupported granularity!")
+        return None
+
+    # Group traffic data by granularity and category
+    grouped_wallet_data = (
+        data.groupby(['Granularity', 'Category'])
+        .size()
+        .reset_index(name='Failure Count')
+    )
+
+    return grouped_wallet_data
+
 
 
 # Streamlit application
@@ -131,13 +156,7 @@ uploaded_file = st.file_uploader("Upload your RRT Data (Excel or CSV)", type=["x
 
 if uploaded_file:
     data = load_data(uploaded_file)
-    traffic_df = preprocess_traffic_impact(data)
-        # Display Traffic Impact DataFrame
-    st.write("### Traffic Impact Summary")
-    if not traffic_df.empty:
-        st.dataframe(traffic_df)
-    else:
-        st.warning("No data available in 'Traffic Impact' column.")
+
     # Global Filters
     st.sidebar.title("Global Filters")
     years = st.sidebar.multiselect("Select Years", data['Year'].unique(), default=data['Year'].unique())
@@ -312,3 +331,29 @@ if uploaded_file:
             st.dataframe(grouped_wallet_data)
         else:
             st.warning("No data available for the selected filters.")
+
+
+#Impact by wallet
+    st.write(f"### 5. Impact by Wallet ({granularity})")
+
+    if grouped_wallet_data is not None and not grouped_wallet_data.empty:
+        fig, ax = plt.subplots(figsize=(12, 6))
+        sns.barplot(
+            data=grouped_wallet_data,
+            x='Granularity',
+            y='Failure Count',
+            hue='Category',
+            ax=ax,
+            palette='viridis'
+        )
+        ax.set_title(f"Impact by Wallet ({granularity})")
+        ax.set_xlabel(granularity)
+        ax.set_ylabel("Failure Count")
+        plt.xticks(rotation=45)
+        st.pyplot(fig)
+
+        # Display Detailed Data
+        st.write(f"#### Detailed Data for Impact by Wallet ({granularity})")
+        st.dataframe(grouped_wallet_data)
+    else:
+        st.warning("No data available for the selected filters.")
