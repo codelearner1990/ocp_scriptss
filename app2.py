@@ -71,29 +71,45 @@ def format_duration(minutes):
         return f"{minutes // 60} hrs {minutes % 60} mins"
 
 
-def parse_traffic_impact(traffic_str):
-    impacts = {}
-    for entry in traffic_str.split("\n"):
-        if '=' in entry:
-            category, items = entry.split("=", 1)
-            if ':' in items:
-                for item in items.split(","):
+def preprocess_traffic_impact(data, column_name='Traffic Impact'):
+    # Fill NaN or blank values with empty strings
+    data[column_name] = data[column_name].fillna("").astype(str)
+    
+    def parse_traffic_impact(traffic_str):
+        impacts = {}
+        for entry in traffic_str.split("\n"):
+            if '=' in entry:
+                category, items = entry.split('=', 1)
+                category = category.strip()
+                for item in items.split(','):
                     try:
-                        key, value = item.split(":")
+                        key, value = item.split(':', 1)
                         key = key.strip()
-                        value = value.strip()
-                        if key and value.isdigit():  # Check if key is not empty and value is a valid integer
-                            impacts[f"{category.strip()}_{key}"] = impacts.get(f"{category.strip()}_{key}", 0) + int(value)
+                        value = int(value.strip())
+                        impacts[f"{category}_{key}"] = impacts.get(f"{category}_{key}", 0) + value
                     except ValueError:
                         st.warning(f"Skipping malformed entry: {item}")
             else:
                 try:
-                    generic_value = items.strip()
-                    if generic_value.isdigit():  # Check if the generic value is a valid integer
-                        impacts[category.strip()] = impacts.get(category.strip(), 0) + int(generic_value)
-                except ValueError:
-                    st.warning(f"Skipping malformed generic entry: {items}")
-    return impacts
+                    generic_value = int(entry.strip())
+                    impacts[category.strip()] = impacts.get(category.strip(), 0) + generic_value
+                except (ValueError, IndexError):
+                    st.warning(f"Skipping malformed generic entry: {entry}")
+        return impacts
+    
+    # Apply parsing logic to the column
+    traffic_data = data[column_name].apply(parse_traffic_impact)
+    
+    # Flatten the parsed impacts and create a summary
+    traffic_summary = Counter()
+    for impact in traffic_data.dropna():
+        traffic_summary.update(impact)
+    
+    # Convert summary into a DataFrame
+    traffic_df = pd.DataFrame(traffic_summary.items(), columns=['Category', 'Count']).sort_values(by='Count', ascending=False)
+    
+    return traffic_df
+
 
 
 # Streamlit application
