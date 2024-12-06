@@ -42,6 +42,8 @@ def load_data(uploaded_file):
         data['Month'] = "Unknown"
         data['Quarter'] = "Unknown"
 
+    dta['Internal/External'] = data['Internal/External'].str.lower().str.strip()
+
     return data
 
 
@@ -66,15 +68,24 @@ def find_common_patterns(data, column_name, top_n=5):
 # Cache utility to format duration
 def format_duration(minutes):
     if minutes < 60:
-        return f"{minutes} mins"
-    else:
-        return f"{minutes // 60} hrs {minutes % 60} mins"
+        return f"{int(minutes)} mins"
+    elif minutes < 1440:  # Less than 24 hours
+        hours = int(minutes // 60)
+        mins = int(minutes % 60)
+        return f"{hours} hrs {mins} mins"
+    else:  # 24 hours or more
+        days = int(minutes // 1440)
+        remaining_minutes = minutes % 1440
+        hours = int(remaining_minutes // 60)
+        mins = int(remaining_minutes % 60)
+        return f"{days} days {hours} hrs {mins} mins"
+
 
 
 def preprocess_traffic_impact(data, column_name='Traffic Impact'):
     # Fill NaN or blank values with empty strings
     data[column_name] = data[column_name].fillna("").astype(str)
-    
+
     def parse_traffic_impact(traffic_str):
         impacts = {}
         for entry in traffic_str.split("\n"):
@@ -89,38 +100,44 @@ def preprocess_traffic_impact(data, column_name='Traffic Impact'):
                         impacts[f"{category}_{key}"] = impacts.get(f"{category}_{key}", 0) + value
                     except ValueError:
                         st.warning(f"Skipping malformed entry: {item}")
-            else:
+            elif traffic_str.strip():
                 try:
-                    generic_value = int(entry.strip())
-                    impacts[category.strip()] = impacts.get(category.strip(), 0) + generic_value
-                except (ValueError, IndexError):
-                    st.warning(f"Skipping malformed generic entry: {entry}")
+                    generic_value = int(traffic_str.strip())
+                    impacts[traffic_str.strip()] = impacts.get(traffic_str.strip(), 0) + generic_value
+                except ValueError:
+                    st.warning(f"Skipping malformed generic entry: {traffic_str.strip()}")
         return impacts
-    
+
     # Apply parsing logic to the column
     traffic_data = data[column_name].apply(parse_traffic_impact)
-    
+
     # Flatten the parsed impacts and create a summary
     traffic_summary = Counter()
     for impact in traffic_data.dropna():
         traffic_summary.update(impact)
-    
+
     # Convert summary into a DataFrame
     traffic_df = pd.DataFrame(traffic_summary.items(), columns=['Category', 'Count']).sort_values(by='Count', ascending=False)
-    
+
     return traffic_df
 
 
 
 # Streamlit application
-st.title("Comprehensive Incident Data Analysis")
+st.title("Digital RRT Data Analysis")
 
 # File uploader
 uploaded_file = st.file_uploader("Upload your RRT Data (Excel or CSV)", type=["xlsx", "csv"])
 
 if uploaded_file:
     data = load_data(uploaded_file)
-
+    traffic_df = preprocess_traffic_impact(data)
+        # Display Traffic Impact DataFrame
+    st.write("### Traffic Impact Summary")
+    if not traffic_df.empty:
+        st.dataframe(traffic_df)
+    else:
+        st.warning("No data available in 'Traffic Impact' column.")
     # Global Filters
     st.sidebar.title("Global Filters")
     years = st.sidebar.multiselect("Select Years", data['Year'].unique(), default=data['Year'].unique())
@@ -128,11 +145,15 @@ if uploaded_file:
     internal_external_filter = st.sidebar.radio("Select Scope", ["Overall", "Internal", "External"], index=0)
     granularity = st.sidebar.radio("Select Time Granularity", ["Yearly", "Quarterly", "Monthly"], index=1)
 
+
     # Apply filters
     filtered_data = data[(data['Year'].isin(years)) & (data['Month'].isin(months))]
-    filtered_data['Root Cause Responsibility'] = filtered_data['Root Cause Responsibility'].str.split('-').str[0].str.strip()
+    filtered_data['Root Cause Responsibility'] = filtered_data['Root Cause Responsibility'].apply(
+        lambda x: x if ' ' nit in x else x.split('-')[0].rsplit('',1)[0]).str.strip()
+    )
+    filtered_data = filtered_data[filtered_data['Root Cause Responsibility']!= ""]
     if internal_external_filter != "Overall":
-        filtered_data = filtered_data[filtered_data['Internal/External'] == internal_external_filter]
+        filtered_data = filtered_data[filtered_data['Internal/External'].str.lower() == internal_external_filter.lower()]
 
     if filtered_data.empty:
         st.error("No data available for the selected filters. Please adjust your filters.")
@@ -169,14 +190,14 @@ if uploaded_file:
             st.warning("No data for 'Issues Caused by Change'.")
 
         # Question 2: Root Cause Responsibility
-        st.write("### 2. Root Cause Responsibility")
+        st.write("### 2. Root Cause Responsibility by Team")
         root_cause_responsibility = filtered_data['Root Cause Responsibility'].value_counts()
         threshold = 2
         if not root_cause_responsibility.empty:
             major_categories = root_cause_responsibility[root_cause_responsibility > threshold]
             fig, ax = plt.subplots()
             major_categories.plot(kind='bar', ax=ax, color='orange')
-            ax.set_title('Root Cause Responsibility')
+            ax.set_title('Root Cause Responsibility by Team')
             ax.set_xlabel('Responsible Group')
             ax.set_ylabel('Count')
             plt.xticks(rotation=45)
@@ -209,50 +230,6 @@ if uploaded_file:
         plt.xticks(rotation=45)
         st.pyplot(fig)
 
-        # MTTR Over Time (Updated Line Chart)
- # MTTR Over Time (Updated Line Chart)
-st.write(f"### MTTR, MTTI, MTTD Over Time ({granularity})")
-
-# Convert MTTR, MTTD, and MTTI into days, hours, and minutes dynamically
-def convert_time_column(data, column):
-    data[f'{column}_formatted'] = data[column].apply(lambda x: f"{x // (24 * 60)}d {(x % (24 * 60)) // 60}h {x % 60}m" if x >= 1440 else
-                                                     f"{x // 60}h {x % 60}m" if x >= 60 else f"{x}m")
-    return data
-
-monthly_data = filtered_data.groupby(['Year', 'Month'])[['MTTR', 'MTTI', 'MTTD']].sum().reset_index()
-monthly_data['Month-Year'] = monthly_data['Year'].astype(str) + "-" + monthly_data['Month'].astype(str)
-
-# Apply dynamic formatting
-monthly_data = convert_time_column(monthly_data, 'MTTR')
-monthly_data = convert_time_column(monthly_data, 'MTTI')
-monthly_data = convert_time_column(monthly_data, 'MTTD')
-
-# Line plot
-fig, ax = plt.subplots(figsize=(10, 6))
-sns.lineplot(data=monthly_data, x='Month-Year', y='MTTR', marker='o', label='MTTR', ax=ax, color='red')
-sns.lineplot(data=monthly_data, x='Month-Year', y='MTTI', marker='o', label='MTTI', ax=ax, color='green')
-sns.lineplot(data=monthly_data, x='Month-Year', y='MTTD', marker='o', label='MTTD', ax=ax, color='blue')
-
-# Formatting the x-axis
-ax.set_xticklabels(monthly_data['Month-Year'], rotation=45)
-ax.set_title(f"MTTR, MTTI, MTTD Over Time ({granularity})")
-ax.set_ylabel("Minutes")
-ax.legend(loc="upper left")
-
-# Display plot
-st.pyplot(fig)
-
-# Display Detailed Data (Optional)
-st.write("### Detailed MTTR, MTTI, MTTD Over Time")
-st.dataframe(monthly_data[['Month-Year', 'MTTR_formatted', 'MTTI_formatted', 'MTTD_formatted']])
-
-
-
-        # Question 5: Common Patterns in Root Cause
-        st.write("### 5. Common Patterns in Root Cause")
-        root_cause_patterns = find_common_patterns(filtered_data, 'Root Cause', top_n=5)
-        st.write("Common Patterns in Root Cause:", root_cause_patterns)
-
         # Display Detailed Data
         st.write("### Detailed Data")
         detailed_data = grouped_data.copy()
@@ -272,35 +249,66 @@ st.dataframe(monthly_data[['Month-Year', 'MTTR_formatted', 'MTTI_formatted', 'MT
         st.dataframe(detailed_data)
 
 # Question: Number of Issues by Priority
-st.write(f"### 9. Number of Issues by Priority ({granularity})")
+        st.write(f"### 9. Number of Issues by Priority ({granularity})")
 
 # Group data based on selected granularity
-if granularity == "Yearly":
-    grouped_priority_data = filtered_data.groupby(['Year', 'Priority']).size().reset_index(name='Count')
-    x_col = 'Year'
-elif granularity == "Quarterly":
-    grouped_priority_data = filtered_data.groupby(['Quarter', 'Priority']).size().reset_index(name='Count')
-    x_col = 'Quarter'
-elif granularity == "Monthly":
-    filtered_data['Month-Year'] = filtered_data['Begin'].dt.to_period("M")
-    grouped_priority_data = filtered_data.groupby(['Month-Year', 'Priority']).size().reset_index(name='Count')
-    x_col = 'Month-Year'
+        if granularity == "Yearly":
+            grouped_priority_data = filtered_data.groupby(['Year', 'Priority']).size().reset_index(name='Count')
+            x_col = 'Year'
+        elif granularity == "Quarterly":
+            grouped_priority_data = filtered_data.groupby(['Quarter', 'Priority']).size().reset_index(name='Count')
+            x_col = 'Quarter'
+        elif granularity == "Monthly":
+            filtered_data['Month-Year'] = filtered_data['Begin'].dt.to_period("M")
+            grouped_priority_data = filtered_data.groupby(['Month-Year', 'Priority']).size().reset_index(name='Count')
+            x_col = 'Month-Year'
 
 # Check if there is data to plot
-if not grouped_priority_data.empty:
-    fig, ax = plt.subplots(figsize=(10, 6))
-    sns.barplot(
-        data=grouped_priority_data,
-        x=x_col,
-        y='Count',
-        hue='Priority',  # Add Priority as a hue to separate bars
-        ax=ax,
-        palette='muted'
-    )
-    ax.set_title(f"Number of Issues by Priority ({granularity})")
-    ax.set_xlabel(granularity)
-    ax.set_ylabel("Count")
-    plt.xticks(rotation=45)
-    st.pyplot(fig)
-else:
-    st.warning("No data available for the selected filters.")
+        if not grouped_priority_data.empty:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            sns.barplot(
+            data=grouped_priority_data,
+            x=x_col,
+            y='Count',
+            hue='Priority',  # Add Priority as a hue to separate bars
+            ax=ax,
+            palette='muted'
+            )
+            ax.set_title(f"Number of Issues by Priority ({granularity})")
+            ax.set_xlabel(granularity)
+            ax.set_ylabel("Count")
+            plt.xticks(rotation=45)
+            st.pyplot(fig)
+        else:
+            st.warning("No data available for the selected filters.")
+
+
+        st.write(f"### 5. Impact by Wallet ({granularity})")
+
+
+        if granularity == "Yearly":
+            grouped_wallet_data = filtered_data.groupby(['Year', 'Category']).size().unstack(fill_value=0)
+            x_col = 'Year'
+        elif granularity == "Quarterly":
+            grouped_wallet_data = filtered_data.groupby(['Quarter', 'Category']).size().unstack(fill_value=0)
+            x_col = 'Quarter'
+        elif granularity == "Monthly":
+            filtered_data['Month-Year'] = filtered_data['Begin'].dt.to_period("M")
+            grouped_wallet_data = filtered_data.groupby(['Month-Year', 'Category']).size().unstack(fill_value=0)
+            x_col = 'Month-Year'
+
+        # Plot the data if not empty
+        if not grouped_wallet_data.empty:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            grouped_wallet_data.plot(kind='bar', stacked=True, ax=ax, colormap="viridis", alpha=0.7)
+            ax.set_title(f"Impact by Wallet ({granularity})")
+            ax.set_xlabel(x_col)
+            ax.set_ylabel("Failure Count")
+            plt.xticks(rotation=45)
+            st.pyplot(fig)
+
+            # Display detailed data
+            st.write(f"#### Detailed Data for Impact by Wallet ({granularity})")
+            st.dataframe(grouped_wallet_data)
+        else:
+            st.warning("No data available for the selected filters.")
