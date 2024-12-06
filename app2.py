@@ -70,6 +70,32 @@ def format_duration(minutes):
     else:
         return f"{minutes // 60} hrs {minutes % 60} mins"
 
+
+def parse_traffic_impact(traffic_str):
+    impacts = {}
+    for entry in traffic_str.split("\n"):
+        if '=' in entry:
+            category, items = entry.split("=", 1)
+            if ':' in items:
+                for item in items.split(","):
+                    try:
+                        key, value = item.split(":")
+                        key = key.strip()
+                        value = value.strip()
+                        if key and value.isdigit():  # Check if key is not empty and value is a valid integer
+                            impacts[f"{category.strip()}_{key}"] = impacts.get(f"{category.strip()}_{key}", 0) + int(value)
+                    except ValueError:
+                        st.warning(f"Skipping malformed entry: {item}")
+            else:
+                try:
+                    generic_value = items.strip()
+                    if generic_value.isdigit():  # Check if the generic value is a valid integer
+                        impacts[category.strip()] = impacts.get(category.strip(), 0) + int(generic_value)
+                except ValueError:
+                    st.warning(f"Skipping malformed generic entry: {items}")
+    return impacts
+
+
 # Streamlit application
 st.title("Comprehensive Incident Data Analysis")
 
