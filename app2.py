@@ -334,26 +334,46 @@ if uploaded_file:
 
 
 #Impact by wallet
-    st.write(f"### 5. Impact by Wallet ({granularity})")
+# Improved Visualization of "Impact by Wallet"
+st.write(f"### 5. Impact by Wallet ({granularity})")
 
-    if grouped_wallet_data is not None and not grouped_wallet_data.empty:
-        fig, ax = plt.subplots(figsize=(12, 6))
-        sns.barplot(
-            data=grouped_wallet_data,
-            x='Granularity',
-            y='Failure Count',
-            hue='Category',
-            ax=ax,
-            palette='viridis'
+# Generate grouped data for plotting
+grouped_wallet_data = preprocess_traffic_impact_with_granularity(filtered_data, granularity=granularity)
+
+if grouped_wallet_data is not None and not grouped_wallet_data.empty:
+    # Sort data by failure count
+    grouped_wallet_data = grouped_wallet_data.sort_values(by='Count', ascending=False)
+
+    fig, ax = plt.subplots(figsize=(14, 8))
+    sns.barplot(
+        data=grouped_wallet_data,
+        x='Count',
+        y='Category',  # Horizontal bar chart
+        hue='Granularity',  # Separate bars by granularity
+        ax=ax,
+        palette='tab10'
+    )
+
+    # Add data labels to bars
+    for bar in ax.patches:
+        ax.text(
+            bar.get_width() + 50,  # Offset to avoid overlapping
+            bar.get_y() + bar.get_height() / 2,
+            f'{int(bar.get_width())}',
+            ha='center', va='center', fontsize=10, color='black'
         )
-        ax.set_title(f"Impact by Wallet ({granularity})")
-        ax.set_xlabel(granularity)
-        ax.set_ylabel("Failure Count")
-        plt.xticks(rotation=45)
-        st.pyplot(fig)
 
-        # Display Detailed Data
-        st.write(f"#### Detailed Data for Impact by Wallet ({granularity})")
-        st.dataframe(grouped_wallet_data)
-    else:
-        st.warning("No data available for the selected filters.")
+    # Improve plot appearance
+    ax.set_title(f"Impact by Wallet ({granularity})", fontsize=14, weight='bold')
+    ax.set_xlabel("Failure Count", fontsize=12)
+    ax.set_ylabel("Wallet", fontsize=12)
+    ax.legend(title=granularity, bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+
+    st.pyplot(fig)
+
+    # Display detailed data
+    st.write(f"#### Detailed Data for Impact by Wallet ({granularity})")
+    st.dataframe(grouped_wallet_data)
+else:
+    st.warning("No data available for the selected filters.")
