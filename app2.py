@@ -228,3 +228,37 @@ st.dataframe(monthly_data[['Month-Year', 'MTTR_formatted', 'MTTI_formatted', 'MT
 
         # Display the cleaned-up detailed data
         st.dataframe(detailed_data)
+
+# Question: Number of Issues by Priority
+st.write(f"### 9. Number of Issues by Priority ({granularity})")
+
+# Group data based on selected granularity
+if granularity == "Yearly":
+    grouped_priority_data = filtered_data.groupby(['Year', 'Priority']).size().reset_index(name='Count')
+    x_col = 'Year'
+elif granularity == "Quarterly":
+    grouped_priority_data = filtered_data.groupby(['Quarter', 'Priority']).size().reset_index(name='Count')
+    x_col = 'Quarter'
+elif granularity == "Monthly":
+    filtered_data['Month-Year'] = filtered_data['Begin'].dt.to_period("M")
+    grouped_priority_data = filtered_data.groupby(['Month-Year', 'Priority']).size().reset_index(name='Count')
+    x_col = 'Month-Year'
+
+# Check if there is data to plot
+if not grouped_priority_data.empty:
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.barplot(
+        data=grouped_priority_data,
+        x=x_col,
+        y='Count',
+        hue='Priority',  # Add Priority as a hue to separate bars
+        ax=ax,
+        palette='muted'
+    )
+    ax.set_title(f"Number of Issues by Priority ({granularity})")
+    ax.set_xlabel(granularity)
+    ax.set_ylabel("Count")
+    plt.xticks(rotation=45)
+    st.pyplot(fig)
+else:
+    st.warning("No data available for the selected filters.")
